@@ -91,14 +91,20 @@ class Sampler(object):
         last_xx = np.zeros(image_shape)    # best image
         last_prob = -sys.maxint                 # highest probability 
 
-        h = start_code.copy()
+        h = start_code.copy()        
 
         condition_idx = 0 
         list_samples = []
         i = 0
+        
+        # for d_h plots
+        d_prior_mins = []
+        d_prior_maxs = []
+        d_condition_mins = []
+        d_condition_maxs = []
 
         while True:
-
+            
             step_size = lr + ((lr_end - lr) * i) / n_iters
             condition = conditions[condition_idx]  # Select a class
 
@@ -149,14 +155,26 @@ class Sampler(object):
 
             # Update h according to Eq.11 in the paper 
             d_h = epsilon1 * d_prior + epsilon2 * d_condition + noise
+            
+            d_prior_mins.append(min(d_prior[0]))
+            d_prior_maxs.append(max(d_prior[0]))
+            d_condition_mins.append(min(d_condition[0]))
+            d_condition_maxs.append(max(d_condition[0]))
+            
+            #print("d_prior max[%.2f] min[%.2f]  d_condition max[%.2f] min[%.2f]  noise max[%.2f] min[%.2f]" %(max(d_prior[0]), min(d_prior[0]), max(d_condition[0]), min(d_condition[0]), max(noise[0]), min(noise[0])))
 
             # Plus the optional epsilon4 for matching the context region when in-painting
             if inpainting is not None:
                 d_h += inpainting["epsilon4"] * d_context_h 
-
+                
+                
             h += step_size/np.abs(d_h).mean() * d_h
 
             h = np.clip(h, a_min=0, a_max=30)   # Keep the code within a realistic range
+            # stochastic clipping
+            #h[h>=30] = np.random.uniform(0, 30)
+            #h[h<=0] = np.random.uniform(0, 30)
+            
 
             # Reset the code every N iters (for diversity when running a long sampling chain)
             if reset_every > 0 and i % reset_every == 0 and i > 0: 
@@ -194,4 +212,135 @@ class Sampler(object):
         print "-------------------------"
         print "Last sample: prob [%s] " % last_prob
 
-        return last_xx, list_samples
+        
+        return last_xx, list_samples, h, np.array(d_prior_mins), np.array(d_prior_maxs), np.array(d_condition_mins), np.array(d_condition_maxs)
+    
+    def h_sampling( self, condition_net, image_encoder, image_generator, 
+                gen_in_layer, gen_out_layer, start_code, 
+                n_iters, lr, lr_end, threshold, 
+                layer, conditions, #units=None, xy=0, 
+                epsilon1=1, epsilon2=1, epsilon3=1e-10,
+                inpainting=None, # in-painting args
+                output_dir=None, reset_every=0, save_every=1):
+        '''
+        The architecture is such that x <- h -> c
+        Therefore unlike the usual sampling from h -> x -> c which results in images with dim: 227x227,
+        our sample method results in images with dim: 256x256
+        '''
+
+        # Get the input and output sizes
+        generator_output_shape = image_generator.blobs[gen_out_layer].data.shape
+        encoder_input_shape = image_encoder.blobs['data'].data.shape
+
+        # Calculate the difference between the input image of the condition net 
+        # and the output image from the generator
+        generator_output_size = util.get_image_size(generator_output_shape)
+        encoder_input_size = util.get_image_size(encoder_input_shape)
+
+        # The top left offset to crop the output image to get a 227x227 image
+        topleft_DAE = util.compute_topleft(encoder_input_size, generator_output_size)
+
+        src = image_generator.blobs[gen_in_layer]     # the input feature layer of the generator
+        
+        # Make sure the layer size and initial vector size match
+        assert src.data.shape == start_code.shape
+
+        # Variables to store the best sample
+        last_xx = np.zeros(generator_output_shape)    # best image
+        last_prob = -sys.maxint                 # highest probability 
+
+        h = start_code.copy()
+        h_shape = h.shape
+        
+        # Adam Parameters
+        mom1 = 0.9
+        mom2 = 0.999
+        eps = 1e-8
+        t = 1
+        m_t = np.zeros(h_shape)
+        v_t = np.zeros(h_shape)
+
+        condition_idx = 0 
+        list_samples = []
+        i = 0
+
+        while True:
+
+            #step_size = lr + ((lr_end - lr) * i) / n_iters
+            condition = conditions[condition_idx]  # Select a class
+
+            # 1. Compute the epsilon1 term ---
+            # compute gradient d log(p(h)) / dh per DAE results in Alain & Bengio 2014
+            d_prior = self.h_autoencoder_grad(h=h, encoder=image_generator, decoder=image_encoder, gen_out_layer=gen_out_layer, topleft=topleft_DAE, inpainting=inpainting)
+
+            # 2. Compute the epsilon2 term ---
+            # Push the code through the generator to get an image x
+            image_generator.blobs["feat"].data[:] = h
+            generated = image_generator.forward()
+            x = generated[gen_out_layer].copy()       # 256x256
+            
+            # Forward pass the latent code h to the condition net up to an unit k at the given layer
+            # Backprop the gradient through the condition net to the latent layer to get a gradient latent code h 
+            d_condition, prob, info = self.forward_backward_from_h_to_condition(net=condition_net, end=layer, h_code=h, condition=condition) 
+
+            self.print_progress(i, info, condition, prob, d_condition)
+
+            # 3. Compute the epsilon3 term ---
+            noise = np.zeros_like(h)
+            if epsilon3 > 0:
+                noise = np.random.normal(0, epsilon3, h.shape)  # Gaussian noise
+            
+            # Update h according to Eq.11 in the paper 
+            d_h = epsilon1 * d_prior + epsilon2 * d_condition + noise
+            
+            ################ Adam ################
+            m_t = mom1*m_t + (1-mom1)*d_h
+            v_t = mom2*v_t + (1-mom2)*(d_h**2)
+            m_t_hat = m_t/(1-mom1**t)
+            v_t_hat = v_t/(1-mom2**t)
+            step_size = lr
+            t += 1
+            
+            #h += step_size*m_t_hat/((np.sqrt(v_t_hat) + eps)*(np.abs(d_h).mean()))
+
+            h += step_size/np.abs(d_h).mean() * d_h
+
+            h = np.clip(h, a_min=0, a_max=30)   # Keep the code within a realistic range
+
+            # Reset the code every N iters (for diversity when running a long sampling chain)
+            if reset_every > 0 and i % reset_every == 0 and i > 0: 
+                h = np.random.normal(0, 1, h.shape)
+
+                # Experimental: For sample diversity, it's a good idea to randomly pick epsilon1 as well
+                epsilon1 = np.random.uniform(low=1e-6, high=1e-2)
+
+            # Save every sample
+            last_xx = x.copy()
+            last_prob = prob
+
+            # Filter samples based on threshold or every N iterations
+            if save_every > 0 and i % save_every == 0 and prob > threshold:
+                name = "%s/samples/%05d.jpg" % (output_dir, i)
+
+                label = self.get_label(condition)
+                list_samples.append( (last_xx.copy(), name, label) ) 
+
+            # Stop if grad is 0
+            if norm(d_h) == 0:
+                print " d_h is 0"
+                break
+
+            # Randomly sample a class every N iterations
+            if i > 0 and i % n_iters == 0:
+                condition_idx += 1
+
+                if condition_idx == len(conditions):
+                    break
+
+            i += 1  # Next iter
+
+        # returning the last sample
+        print "-------------------------"
+        print "Last sample: prob [%s] " % last_prob
+
+        return last_xx, list_samples, h
