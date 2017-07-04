@@ -18,6 +18,9 @@ import argparse
 import util
 from sampler import Sampler
 
+import matplotlib.pyplot as plt
+from decimal import Decimal
+
 if settings.gpu:
     caffe.set_mode_gpu() # sampling on GPU 
 
@@ -191,6 +194,8 @@ def main():
     net = caffe.Classifier(args.net_definition, args.net_weights,
                              mean = np.float32([104.0, 117.0, 123.0]), # ImageNet mean
                              channel_swap = (2,1,0)) # the reference model has channels in BGR order instead of RGB
+                           
+    h_net = caffe.Net("./nets/h_classifier/h_classifier.prototxt", "./nets/h_classifier/h_classifier.caffemodel", caffe.TEST)
 
     # Fix the seed
     np.random.seed(args.seed)
@@ -230,7 +235,7 @@ def main():
     conditions = [ { "unit": int(u), "xy": args.xy } for u in args.units.split("_") ]       
     
     # Optimize a code via gradient ascent
-    output_image, list_samples = sampler.sampling( condition_net=net, image_encoder=encoder, image_generator=generator, 
+    output_image, list_samples, last_h, d_prior_mins, d_prior_maxs, d_condition_mins, d_condition_maxs = sampler.sampling( condition_net=net, image_encoder=encoder, image_generator=generator, 
                         gen_in_layer=settings.generator_in_layer, gen_out_layer=settings.generator_out_layer, start_code=start_code, 
                         n_iters=args.n_iters, lr=args.lr, lr_end=args.lr_end, threshold=args.threshold, 
                         layer=args.act_layer, conditions=conditions,
@@ -238,6 +243,35 @@ def main():
                         inpainting=inpainting,
                         output_dir=args.output_dir, 
                         reset_every=args.reset_every, save_every=args.save_every)
+    
+    #################### send h through the h_net to verify class probability ####################
+    probs = h_net.forward(fc6=last_h, end='prob')
+    class_prob = probs['prob'][0][conditions[0]["unit"]]
+    print("class probability is " + str(class_prob))
+    ##############################################################################################
+    
+    d_prior_mins_scale = d_prior_mins*args.epsilon1
+    d_prior_maxs_scale = d_prior_maxs*args.epsilon1
+    # plot the gradients
+    plt.subplot(2, 1, 1)
+    plt.title('d_prior & d_condition', fontsize=30)
+    plt.plot(d_prior_mins, color="blue", linewidth=2.0, linestyle="--", label='d_prior mins')
+    plt.plot(d_prior_maxs, color="blue", linewidth=2.0, linestyle="-", label='d_prior maxs')
+    plt.plot(d_condition_mins, color="red", linewidth=2.0, linestyle="--", label='d_condition mins')
+    plt.plot(d_condition_maxs, color="red", linewidth=2.0, linestyle="-", label='d_condition maxs')
+    plt.legend()
+    #plt.legend(bbox_to_anchor=(0., 1.02, 1., .102), loc=3, ncol=2, mode="expand", borderaxespad=0.)
+    
+    plt.subplot(2, 1, 2)
+    plt.title('d_prior (scaled by eps1=' + '%.0e'%Decimal(args.epsilon1) + ') & d_condition', fontsize=30)
+    plt.plot(d_condition_mins, color="red", linewidth=2.0, linestyle="--", label='d_condition mins')
+    plt.plot(d_condition_maxs, color="red", linewidth=2.0, linestyle="-", label='d_condition maxs')
+    plt.plot(d_prior_mins_scale, color="blue", linewidth=2.0, linestyle="--", label='d_prior mins (scaled)')
+    plt.plot(d_prior_maxs_scale, color="blue", linewidth=2.0, linestyle="-", label='d_prior maxs (scaled)')
+    plt.xlabel('num iters', fontsize=20)
+    plt.legend()
+    plt.show()
+    #plt.savefig("%s/gradients_plt.png")#, dpi=72)
 
     # Output image
     filename = "%s/%s_%04d_%04d_%s_h_%s_%s_%s_%s__%s.jpg" % (
