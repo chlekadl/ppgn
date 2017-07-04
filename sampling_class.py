@@ -250,28 +250,51 @@ def main():
     print("class probability is " + str(class_prob))
     ##############################################################################################
     
+    
+    #################### Plot gradients vs. num_iters ####################
     d_prior_mins_scale = d_prior_mins*args.epsilon1
     d_prior_maxs_scale = d_prior_maxs*args.epsilon1
     # plot the gradients
-    plt.subplot(2, 1, 1)
-    plt.title('d_prior & d_condition', fontsize=30)
-    plt.plot(d_prior_mins, color="blue", linewidth=2.0, linestyle="--", label='d_prior mins')
-    plt.plot(d_prior_maxs, color="blue", linewidth=2.0, linestyle="-", label='d_prior maxs')
-    plt.plot(d_condition_mins, color="red", linewidth=2.0, linestyle="--", label='d_condition mins')
-    plt.plot(d_condition_maxs, color="red", linewidth=2.0, linestyle="-", label='d_condition maxs')
-    plt.legend()
+    plt.subplot(3, 1, 1)    #subplot(nrows, ncols, plot_number)
+    x1 = np.linspace(0, args.n_iters, args.n_iters + 1, endpoint=True)
+    plt.title('d_prior and d_condition', fontsize=30)
+    plt.plot(x1, d_prior_mins, color="blue", linewidth=2.0, linestyle="--", label='d_prior mins')
+    plt.plot(x1, d_prior_maxs, color="blue", linewidth=2.0, linestyle="-", label='d_prior maxs')
+    plt.plot(x1, d_condition_mins, color="red", linewidth=2.0, linestyle="--", label='d_condition mins')
+    plt.plot(x1, d_condition_maxs, color="red", linewidth=2.0, linestyle="-", label='d_condition maxs')
+    plt.legend(fontsize=15)
     #plt.legend(bbox_to_anchor=(0., 1.02, 1., .102), loc=3, ncol=2, mode="expand", borderaxespad=0.)
     
-    plt.subplot(2, 1, 2)
-    plt.title('d_prior (scaled by eps1=' + '%.0e'%Decimal(args.epsilon1) + ') & d_condition', fontsize=30)
-    plt.plot(d_condition_mins, color="red", linewidth=2.0, linestyle="--", label='d_condition mins')
-    plt.plot(d_condition_maxs, color="red", linewidth=2.0, linestyle="-", label='d_condition maxs')
-    plt.plot(d_prior_mins_scale, color="blue", linewidth=2.0, linestyle="--", label='d_prior mins (scaled)')
-    plt.plot(d_prior_maxs_scale, color="blue", linewidth=2.0, linestyle="-", label='d_prior maxs (scaled)')
-    plt.xlabel('num iters', fontsize=20)
-    plt.legend()
+    plt.subplot(3, 1, 2)
+    x2 = np.linspace(0, args.n_iters, args.n_iters + 1, endpoint=True)
+    plt.title('d_prior (scaled by eps1=' + '%.0e'%Decimal(args.epsilon1) + ') and d_condition', fontsize=30)
+    #plt.title('d_condition', fontsize=30)
+    plt.plot(x2, d_condition_mins, color="red", linewidth=2.0, linestyle="--", label='d_condition mins')
+    plt.plot(x2, d_condition_maxs, color="red", linewidth=2.0, linestyle="-", label='d_condition maxs')
+    plt.plot(x2, d_prior_mins_scale, color="blue", linewidth=2.0, linestyle="--", label='d_prior mins (scaled)')
+    plt.plot(x2, d_prior_maxs_scale, color="blue", linewidth=2.0, linestyle="-", label='d_prior maxs (scaled)')
+    plt.legend(fontsize=15)
+            
+    plt.subplot(3, 1, 3)
+    x3 = np.linspace(14, args.n_iters, args.n_iters + 1 - 14, endpoint=True)
+    plt.title('d_prior (scaled by eps1=' + '%.0e'%Decimal(args.epsilon1) + ') and d_condition from n_iter=14', fontsize=30)
+    #plt.title('d_condition from n_iter=14', fontsize=30)
+    plt.plot(x3, d_condition_mins[14:], color="red", linewidth=2.0, linestyle="--", label='d_condition mins')
+    plt.plot(x3, d_condition_maxs[14:], color="red", linewidth=2.0, linestyle="-", label='d_condition maxs')
+    plt.plot(x3, d_prior_mins_scale[14:], color="blue", linewidth=2.0, linestyle="--", label='d_prior mins (scaled)')
+    plt.plot(x3, d_prior_maxs_scale[14:], color="blue", linewidth=2.0, linestyle="-", label='d_prior maxs (scaled)')
+    plt.xlabel('num iters', fontsize=30)
+    plt.legend(fontsize=15)
+    
+    for i in xrange(args.n_iters):
+        if i % 20 == 0:
+            plt.annotate('(%s, %s)' %(i, d_condition_maxs[i]), xy=(i, d_condition_maxs[i] + 0.0005), textcoords='data')
+            plt.annotate('(%s, %s)' %(i, d_condition_mins[i]), xy=(i, d_condition_mins[i] - 0.0005), textcoords='data')
+            
     plt.show()
     #plt.savefig("%s/gradients_plt.png")#, dpi=72)
+    
+    ####################################################################
 
     # Output image
     filename = "%s/%s_%04d_%04d_%s_h_%s_%s_%s_%s__%s.jpg" % (

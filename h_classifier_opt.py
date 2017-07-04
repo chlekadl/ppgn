@@ -20,17 +20,17 @@ if settings.gpu:
     caffe.set_mode_gpu() # sampling on GPU
 
 # load the Generator and the Classifier
-encoder = caffe.Net("/home/choidami/ml/ppgn/nets/caffenet/caffenet_128.prototxt", settings.encoder_weights, caffe.TEST)
+encoder = caffe.Net("./nets/caffenet/caffenet_128.prototxt", settings.encoder_weights, caffe.TEST)
 #W_fc7 = encoder.params["fc7"][0].data[...]
 #b_fc7 = encoder.params["fc7"][1].data[...]
 #W_fc8 = encoder.params["fc8"][0].data[...]
 #b_fc8 = encoder.params["fc8"][1].data[...]
 
-classifier = caffe.Classifier("/home/choidami/ml/ppgn/nets/caffenet/caffenet_128.prototxt", settings.encoder_weights,
+classifier = caffe.Classifier("./nets/caffenet/caffenet_128.prototxt", settings.encoder_weights,
                        mean = np.float32([104.0, 117.0, 123.0]), # ImageNet mean
                        channel_swap = (2,1,0)) # the reference model has channels in BGR order instead of RGB
-#generator = caffe.Net("/home/choidami/ml/ppgn/nets/generator/noiseless/generator_batchsize_128.prototxt", settings.generator_weights, caffe.TEST)
-generator = caffe.Net("/home/choidami/ml/ppgn/nets/generator/noiseless/generator_batchsize_128.prototxt", settings.generator_weights, caffe.TEST)
+#generator = caffe.Net("./nets/generator/noiseless/generator_batchsize_128.prototxt", settings.generator_weights, caffe.TEST)
+generator = caffe.Net("./generator/noiseless/generator_batchsize_128.prototxt", settings.generator_weights, caffe.TEST)
 #generator = caffe.Net(settings.generator_definition, settings.generator_weights, caffe.TEST)
 
 gen_in = settings.generator_in_layer
