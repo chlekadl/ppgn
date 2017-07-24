@@ -78,7 +78,7 @@ for unit in ${units}; do
             f_chain=${output_dir}/chain_${units}_hx_${epsilon1}_noise_${epsilon3}__${seed}.jpg
 
             # Make a montage of steps
-            montage `ls ${sample_dir}/*.jpg | head -40` -tile 10x -geometry +1+1 ${f_chain}
+            montage `ls ${sample_dir}/*.jpg | head -200` -tile 10x -geometry +1+1 ${f_chain}
       
             readlink -f ${f_chain}
         fi

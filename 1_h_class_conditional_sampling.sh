@@ -10,11 +10,11 @@ if [ "$#" -ne "1" ]; then
 fi
 
 opt_layer=fc6
-act_layer=fc9
+act_layer=fc8
 units="${1}"      # Index of neurons in fc layers or channels in conv layers
 xy=0              # Spatial position for conv layers, for fc layers: xy = 0
 
-n_iters=1000       # Run for N iterations
+n_iters=200       # Run for N iterations
 reset_every=0     # Reset the code every N iterations (for diversity)
 save_every=5      # Save a sample every N iterations
 lr=1
@@ -24,9 +24,9 @@ threshold=0       # Filter out samples below this threshold e.g. 0.98
 # -----------------------------------------------
 # Multipliers in the update rule Eq.11 in the paper
 # -----------------------------------------------
-epsilon1=0     # prior
+epsilon1=1e-5     # prior
 epsilon2=1        # condition
-epsilon3=1e-5    # noise
+epsilon3=1e-17    # noise
 # -----------------------------------------------
 
 init_file="None"    # Start from a random code. To start from a real code, replace with a path e.g. "images/filename.jpg"
@@ -37,7 +37,7 @@ net_definition="nets/caffenet/caffenet.prototxt"
 #-----------------------
 
 # Output dir
-output_dir="output/${act_layer}_chain_${units}_eps1_${epsilon1}_eps3_${epsilon3}"
+output_dir="output_h/${act_layer}_chain_${units}_eps1_${epsilon1}_eps3_${epsilon3}"
 mkdir -p ${output_dir}
 
 # Directory to store samples

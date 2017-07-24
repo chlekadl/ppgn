@@ -98,10 +98,10 @@ class Sampler(object):
         i = 0
         
         # for d_h plots
-        d_prior_mins = []
-        d_prior_maxs = []
-        d_condition_mins = []
-        d_condition_maxs = []
+        d_prior_norm = []
+        d_condition_norm = []
+        boundary_points = []
+        h_norm = []
 
         while True:
             
@@ -156,10 +156,8 @@ class Sampler(object):
             # Update h according to Eq.11 in the paper 
             d_h = epsilon1 * d_prior + epsilon2 * d_condition + noise
             
-            d_prior_mins.append(min(d_prior[0]))
-            d_prior_maxs.append(max(d_prior[0]))
-            d_condition_mins.append(min(d_condition[0]))
-            d_condition_maxs.append(max(d_condition[0]))
+            d_prior_norm.append(norm(d_prior[0]))
+            d_condition_norm.append(norm(d_condition[0]))
             
             #print("d_prior max[%.2f] min[%.2f]  d_condition max[%.2f] min[%.2f]  noise max[%.2f] min[%.2f]" %(max(d_prior[0]), min(d_prior[0]), max(d_condition[0]), min(d_condition[0]), max(noise[0]), min(noise[0])))
 
@@ -172,9 +170,11 @@ class Sampler(object):
 
             h = np.clip(h, a_min=0, a_max=30)   # Keep the code within a realistic range
             # stochastic clipping
-            #h[h>=30] = np.random.uniform(0, 30)
-            #h[h<=0] = np.random.uniform(0, 30)
+            #h[h>30] = np.random.uniform(0, 30)
+            #h[h<0] = np.random.uniform(0, 30)
             
+            boundary_points.append(np.count_nonzero(h==30) + np.count_nonzero(h==0))
+            h_norm.append(norm(h))
 
             # Reset the code every N iters (for diversity when running a long sampling chain)
             if reset_every > 0 and i % reset_every == 0 and i > 0: 
@@ -213,7 +213,7 @@ class Sampler(object):
         print "Last sample: prob [%s] " % last_prob
 
         
-        return last_xx, list_samples, h, np.array(d_prior_mins), np.array(d_prior_maxs), np.array(d_condition_mins), np.array(d_condition_maxs)
+        return last_xx, list_samples, h, np.array(d_prior_norm), np.array(d_condition_norm), np.array(boundary_points), h_norm
     
     def h_sampling( self, condition_net, image_encoder, image_generator, 
                 gen_in_layer, gen_out_layer, start_code, 
@@ -263,6 +263,13 @@ class Sampler(object):
         condition_idx = 0 
         list_samples = []
         i = 0
+        
+        # for d_h plots
+        d_prior_mins = []
+        d_prior_maxs = []
+        d_condition_mins = []
+        d_condition_maxs = []
+        boundary_points = []
 
         while True:
 
@@ -293,6 +300,11 @@ class Sampler(object):
             # Update h according to Eq.11 in the paper 
             d_h = epsilon1 * d_prior + epsilon2 * d_condition + noise
             
+            d_prior_mins.append(min(d_prior[0]))
+            d_prior_maxs.append(max(d_prior[0]))
+            d_condition_mins.append(min(d_condition[0]))
+            d_condition_maxs.append(max(d_condition[0]))
+            
             ################ Adam ################
             m_t = mom1*m_t + (1-mom1)*d_h
             v_t = mom2*v_t + (1-mom2)*(d_h**2)
@@ -306,6 +318,11 @@ class Sampler(object):
             h += step_size/np.abs(d_h).mean() * d_h
 
             h = np.clip(h, a_min=0, a_max=30)   # Keep the code within a realistic range
+            # stochastic clipping
+            #h[h>30] = np.random.uniform(0, 30)
+            #h[h<0] = np.random.uniform(0, 30)
+            
+            boundary_points.append(np.count_nonzero(h==30) + np.count_nonzero(h==0))
 
             # Reset the code every N iters (for diversity when running a long sampling chain)
             if reset_every > 0 and i % reset_every == 0 and i > 0: 
@@ -343,4 +360,4 @@ class Sampler(object):
         print "-------------------------"
         print "Last sample: prob [%s] " % last_prob
 
-        return last_xx, list_samples, h
+        return last_xx, list_samples, h, np.array(d_prior_mins), np.array(d_prior_maxs), np.array(d_condition_mins), np.array(d_condition_maxs), np.array(boundary_points)

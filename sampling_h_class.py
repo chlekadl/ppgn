@@ -18,6 +18,9 @@ import argparse
 import util
 from sampler import Sampler
 
+import matplotlib.pyplot as plt
+from decimal import Decimal
+
 if settings.gpu:
     caffe.set_mode_gpu() # sampling on GPU 
 
@@ -241,11 +244,11 @@ def main():
     net = caffe.Classifier(args.net_definition, args.net_weights,
                              mean = np.float32([104.0, 117.0, 123.0]), # ImageNet mean
                              channel_swap = (2,1,0)) # the reference model has channels in BGR order instead of RGB
-    #h_net = caffe.Net(settings.h_classifier_definition, settings.h_classifier_weights, caffe.TEST)
-    h_net = caffe.Net("/home/choidami/ml/ppgn/nets/h_classifier/h_classifier_Adam.prototxt", "/home/choidami/ml/ppgn/nets/h_classifier/h_classifier_Adam.caffemodel", caffe.TEST)
+    h_net = caffe.Net("./nets/h_classifier/h_classifier.prototxt", "./nets/h_classifier/h_classifier.caffemodel", caffe.TEST)
+    #h_net = caffe.Net("/home/damichoi/ml/ppgn/nets/h_classifier/h_classifier_Adam.prototxt", "/home/damichoi/ml/ppgn/nets/h_classifier/h_classifier_Adam.caffemodel", caffe.TEST)
 
     # Fix the seed
-    #np.random.seed(args.seed)
+    np.random.seed(args.seed)
 
     # Sampler for class-conditional generation
     sampler = ClassConditionalSampler()
@@ -291,7 +294,7 @@ def main():
 #                        output_dir=args.output_dir, 
 #                        reset_every=args.reset_every, save_every=args.save_every)
     
-    output_image, list_samples, h = sampler.h_sampling( condition_net=h_net, image_encoder=encoder, image_generator=generator, 
+    output_image, list_samples, h, d_prior_mins, d_prior_maxs, d_condition_mins, d_condition_maxs, boundary_points  = sampler.h_sampling( condition_net=h_net, image_encoder=encoder, image_generator=generator, 
                         gen_in_layer=settings.generator_in_layer, gen_out_layer=settings.generator_out_layer, start_code=start_code, 
                         n_iters=args.n_iters, lr=args.lr, lr_end=args.lr_end, threshold=args.threshold, 
                         layer=args.act_layer, conditions=conditions,
@@ -315,6 +318,52 @@ def main():
     print("class is " + str(conditions[0]["unit"]))
     print("class probability is " + str(class_prob))
     ##############################################################################################
+    
+    #################### Plot gradients vs. num_iters ####################
+    # plot the gradients
+    plt.subplot(3, 1, 1)    #subplot(nrows, ncols, plot_number)
+    x1 = np.linspace(0, args.n_iters, args.n_iters + 1, endpoint=True)
+    plt.title('d_prior and d_condition')
+    plt.plot(x1, d_prior_mins, color="blue", linewidth=2.0, linestyle="--", label='d_prior mins')
+    plt.plot(x1, d_prior_maxs, color="blue", linewidth=2.0, linestyle="-", label='d_prior maxs')
+    plt.plot(x1, d_condition_mins, color="red", linewidth=2.0, linestyle="--", label='d_condition mins')
+    plt.plot(x1, d_condition_maxs, color="red", linewidth=2.0, linestyle="-", label='d_condition maxs')
+    plt.legend()
+    #plt.legend(bbox_to_anchor=(0., 1.02, 1., .102), loc=3, ncol=2, mode="expand", borderaxespad=0.)
+    
+    plt.subplot(3, 1, 2)
+    x2 = np.linspace(0, args.n_iters, args.n_iters + 1, endpoint=True)
+    plt.title('d_prior (scaled by eps1=' + '%.0e'%Decimal(args.epsilon1) + ') and d_condition (scaled by eps2=' + '%.0e'%Decimal(args.epsilon2) + ')')
+    #plt.title('d_condition', fontsize=30)
+    plt.plot(x2, d_condition_mins*args.epsilon2, color="red", linewidth=2.0, linestyle="--", label='d_condition mins')
+    plt.plot(x2, d_condition_maxs*args.epsilon2, color="red", linewidth=2.0, linestyle="-", label='d_condition maxs')
+    plt.plot(x2, d_prior_mins*args.epsilon1, color="blue", linewidth=2.0, linestyle="--", label='d_prior mins (scaled)')
+    plt.plot(x2, d_prior_maxs*args.epsilon1, color="blue", linewidth=2.0, linestyle="-", label='d_prior maxs (scaled)')
+    plt.legend()
+            
+    plt.subplot(3, 1, 3)
+    x3 = np.linspace(14, args.n_iters, args.n_iters + 1 - 14, endpoint=True)
+    plt.title('d_prior (scaled by eps1=' + '%.0e'%Decimal(args.epsilon1) + ') and d_condition (scaled by eps2=' + '%.0e'%Decimal(args.epsilon2) + ') from n_iter=14')
+    #plt.title('d_condition from n_iter=14', fontsize=30)
+    plt.plot(x3, d_condition_mins[14:]*args.epsilon2, color="red", linewidth=2.0, linestyle="--", label='d_condition mins')
+    plt.plot(x3, d_condition_maxs[14:]*args.epsilon2, color="red", linewidth=2.0, linestyle="-", label='d_condition maxs')
+    plt.plot(x3, d_prior_mins[14:]*args.epsilon1, color="blue", linewidth=2.0, linestyle="--", label='d_prior mins (scaled)')
+    plt.plot(x3, d_prior_maxs[14:]*args.epsilon1, color="blue", linewidth=2.0, linestyle="-", label='d_prior maxs (scaled)')
+    plt.xlabel('num iters')
+    plt.legend()
+    
+    for i in xrange(args.n_iters):
+        if i % 20 == 0:
+            plt.annotate('(%s, %s)' %(i, d_condition_maxs[i]), xy=(i, d_condition_maxs[i] + 0.0005), textcoords='data')
+            #plt.annotate('(%s, %s)' %(i, d_condition_mins[i]), xy=(i, d_condition_mins[i] - 0.0005), textcoords='data')
+
+#    plt.title('% of boundary points')       
+#    plt.plot(boundary_points/float(start_code.shape[1])*100)
+#    plt.xlabel('num iters')
+    plt.show()
+    #plt.savefig("%s/gradients_plt.png")#, dpi=72)
+    
+    ####################################################################
 
     # Output image
     filename = "%s/%s_%04d_%04d_%s_h_%s_%s_%s_%s__%s.jpg" % (

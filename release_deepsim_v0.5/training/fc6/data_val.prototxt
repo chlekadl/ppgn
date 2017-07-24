@@ -1,0 +1,16 @@
+layer {
+  name: "data"
+  type: "Data"
+  top: "data"
+  data_param {
+    source: "@YOUR_PATH_TO_DATA@/imagenet-lmdb/ilsvrc12_val_lmdb"
+    backend: LMDB
+    batch_size: 64
+  }
+  transform_param {
+    crop_size: 227
+    mean_file: "@YOUR_PATH_TO_DATA@/imagenet-lmdb/mean.binaryproto"
+    mirror: true
+#     scale: 0.0039
+  }
+}

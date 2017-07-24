@@ -74,11 +74,12 @@ class ClassConditionalSampler(Sampler):
         else:
             raise Exception("Invalid layer type!")
         
-        dst.diff[:] = one_hot
+        dst.diff[:] = one_hot*1000
 
         # Backpropagate the gradient to the image layer 
         diffs = net.backward(start=end, diffs=['data'])
         g = diffs['data'].copy()
+        print g.max()
 
         dst.diff.fill(0.)   # reset objective after each step
 
@@ -87,6 +88,7 @@ class ClassConditionalSampler(Sampler):
             'best_unit': best_unit,
             'best_unit_prob': probs.flat[best_unit]
         }
+        
         return g, obj_prob, info 
 
 
@@ -235,7 +237,7 @@ def main():
     conditions = [ { "unit": int(u), "xy": args.xy } for u in args.units.split("_") ]       
     
     # Optimize a code via gradient ascent
-    output_image, list_samples, last_h, d_prior_mins, d_prior_maxs, d_condition_mins, d_condition_maxs = sampler.sampling( condition_net=net, image_encoder=encoder, image_generator=generator, 
+    output_image, list_samples, last_h, d_prior_norms, d_condition_norms, boundary_points, h_norms = sampler.sampling( condition_net=net, image_encoder=encoder, image_generator=generator, 
                         gen_in_layer=settings.generator_in_layer, gen_out_layer=settings.generator_out_layer, start_code=start_code, 
                         n_iters=args.n_iters, lr=args.lr, lr_end=args.lr_end, threshold=args.threshold, 
                         layer=args.act_layer, conditions=conditions,
@@ -252,54 +254,50 @@ def main():
     
     
     #################### Plot gradients vs. num_iters ####################
-    d_prior_mins_scale = d_prior_mins*args.epsilon1
-    d_prior_maxs_scale = d_prior_maxs*args.epsilon1
     # plot the gradients
     plt.subplot(3, 1, 1)    #subplot(nrows, ncols, plot_number)
     x1 = np.linspace(0, args.n_iters, args.n_iters + 1, endpoint=True)
-    plt.title('d_prior and d_condition', fontsize=30)
-    plt.plot(x1, d_prior_mins, color="blue", linewidth=2.0, linestyle="--", label='d_prior mins')
-    plt.plot(x1, d_prior_maxs, color="blue", linewidth=2.0, linestyle="-", label='d_prior maxs')
-    plt.plot(x1, d_condition_mins, color="red", linewidth=2.0, linestyle="--", label='d_condition mins')
-    plt.plot(x1, d_condition_maxs, color="red", linewidth=2.0, linestyle="-", label='d_condition maxs')
-    plt.legend(fontsize=15)
-    #plt.legend(bbox_to_anchor=(0., 1.02, 1., .102), loc=3, ncol=2, mode="expand", borderaxespad=0.)
+    plt.title('d_prior and d_condition')
+    plt.plot(x1, d_prior_norms, color="blue", linewidth=2.0, linestyle="--", label='d_prior norms')
+    plt.plot(x1, d_condition_norms, color="red", linewidth=2.0, linestyle="--", label='d_condition norms')
+    plt.legend()
     
     plt.subplot(3, 1, 2)
     x2 = np.linspace(0, args.n_iters, args.n_iters + 1, endpoint=True)
-    plt.title('d_prior (scaled by eps1=' + '%.0e'%Decimal(args.epsilon1) + ') and d_condition', fontsize=30)
-    #plt.title('d_condition', fontsize=30)
-    plt.plot(x2, d_condition_mins, color="red", linewidth=2.0, linestyle="--", label='d_condition mins')
-    plt.plot(x2, d_condition_maxs, color="red", linewidth=2.0, linestyle="-", label='d_condition maxs')
-    plt.plot(x2, d_prior_mins_scale, color="blue", linewidth=2.0, linestyle="--", label='d_prior mins (scaled)')
-    plt.plot(x2, d_prior_maxs_scale, color="blue", linewidth=2.0, linestyle="-", label='d_prior maxs (scaled)')
-    plt.legend(fontsize=15)
+    plt.title('d_prior (scaled by eps1=' + '%.0e'%Decimal(args.epsilon1) + ') and d_condition (scaled by eps2=' + '%.0e'%Decimal(args.epsilon2) + ')')
+    plt.plot(x2, d_condition_norms*args.epsilon2, color="red", linewidth=2.0, linestyle="--", label='d_condition norms')
+    plt.plot(x2, d_prior_norms*args.epsilon1, color="blue", linewidth=2.0, linestyle="--", label='d_prior norms (scaled)')
+    plt.legend()
             
     plt.subplot(3, 1, 3)
-    x3 = np.linspace(14, args.n_iters, args.n_iters + 1 - 14, endpoint=True)
-    plt.title('d_prior (scaled by eps1=' + '%.0e'%Decimal(args.epsilon1) + ') and d_condition from n_iter=14', fontsize=30)
-    #plt.title('d_condition from n_iter=14', fontsize=30)
-    plt.plot(x3, d_condition_mins[14:], color="red", linewidth=2.0, linestyle="--", label='d_condition mins')
-    plt.plot(x3, d_condition_maxs[14:], color="red", linewidth=2.0, linestyle="-", label='d_condition maxs')
-    plt.plot(x3, d_prior_mins_scale[14:], color="blue", linewidth=2.0, linestyle="--", label='d_prior mins (scaled)')
-    plt.plot(x3, d_prior_maxs_scale[14:], color="blue", linewidth=2.0, linestyle="-", label='d_prior maxs (scaled)')
-    plt.xlabel('num iters', fontsize=30)
-    plt.legend(fontsize=15)
+    x3 = np.linspace(25, args.n_iters, args.n_iters + 1 - 25, endpoint=True)
+    plt.title('d_prior (scaled by eps1=' + '%.0e'%Decimal(args.epsilon1) + ') and d_condition (scaled by eps2=' + '%.0e'%Decimal(args.epsilon2) + ') from n_iter=25')
+    plt.plot(x3, d_condition_norms[25:]*args.epsilon2, color="red", linewidth=2.0, linestyle="--", label='d_condition norms')
+    plt.plot(x3, d_prior_norms[25:]*args.epsilon1, color="blue", linewidth=2.0, linestyle="--", label='d_prior norms (scaled)')
+    plt.xlabel('num iters')
+    plt.legend()
     
-    for i in xrange(args.n_iters):
-        if i % 20 == 0:
-            plt.annotate('(%s, %s)' %(i, d_condition_maxs[i]), xy=(i, d_condition_maxs[i] + 0.0005), textcoords='data')
-            plt.annotate('(%s, %s)' %(i, d_condition_mins[i]), xy=(i, d_condition_mins[i] - 0.0005), textcoords='data')
+#    for i in xrange(args.n_iters):
+#        if i % 20 == 0:
+#            plt.annotate('(%s, %s)' %(i, d_condition_norms[i]), xy=(i, d_condition_norms[i]+ 20), textcoords='data')
+            #plt.annotate('(%s, %s)' %(i, d_condition_mins[i]), xy=(i, d_condition_mins[i] - 0.0005), textcoords='data')
             
+#    plt.title('% of boundary points')       
+#    plt.plot(boundary_points/float(start_code.shape[1])*100)
+#    plt.xlabel('num iters')
+
+#    plt.title('norm of h')       
+#    plt.plot(h_norms)
+#    plt.xlabel('num iters')
+
     plt.show()
     #plt.savefig("%s/gradients_plt.png")#, dpi=72)
     
     ####################################################################
 
     # Output image
-    filename = "%s/%s_%04d_%04d_%s_h_%s_%s_%s_%s__%s.jpg" % (
+    filename = "%s/%04d_%04d_%s_h_%s_%s_%s_%s__%s.jpg" % (
             args.output_dir,
-            args.act_layer, 
             conditions[0]["unit"],
             args.n_iters,
             args.lr,

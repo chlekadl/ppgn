@@ -21,16 +21,12 @@ if settings.gpu:
 
 # load the Generator and the Classifier
 encoder = caffe.Net("./nets/caffenet/caffenet_128.prototxt", settings.encoder_weights, caffe.TEST)
-#W_fc7 = encoder.params["fc7"][0].data[...]
-#b_fc7 = encoder.params["fc7"][1].data[...]
-#W_fc8 = encoder.params["fc8"][0].data[...]
-#b_fc8 = encoder.params["fc8"][1].data[...]
 
 classifier = caffe.Classifier("./nets/caffenet/caffenet_128.prototxt", settings.encoder_weights,
                        mean = np.float32([104.0, 117.0, 123.0]), # ImageNet mean
                        channel_swap = (2,1,0)) # the reference model has channels in BGR order instead of RGB
 #generator = caffe.Net("./nets/generator/noiseless/generator_batchsize_128.prototxt", settings.generator_weights, caffe.TEST)
-generator = caffe.Net("./generator/noiseless/generator_batchsize_128.prototxt", settings.generator_weights, caffe.TEST)
+generator = caffe.Net("./nets/generator/noiseless/generator_batchsize_128.prototxt", settings.generator_weights, caffe.TEST)
 #generator = caffe.Net(settings.generator_definition, settings.generator_weights, caffe.TEST)
 
 gen_in = settings.generator_in_layer
@@ -71,19 +67,51 @@ class MLP(nn.Module):
 
     def __init__(self):
         super(MLP, self).__init__()
-        self.dropout1 = nn.Dropout()
-        self.fc1 = nn.Linear(4096, 5000)
-        self.dropout2 = nn.Dropout()
-        self.fc2 = nn.Linear(5000, 2500)
-        self.fc3 = nn.Linear(2500,1000)
+        self.dropout1 = nn.AlphaDropout(p=0.1)
+        self.fc1 = nn.Linear(4096, 4096)
+        self.dropout2 = nn.AlphaDropout(p=0.1)
+        self.fc2 = nn.Linear(4096, 3500)
+        self.dropout3 = nn.AlphaDropout(p=0.1)
+        self.fc3 = nn.Linear(3500,3000)
+        self.dropout4 = nn.AlphaDropout(p=0.1)
+        self.fc4 = nn.Linear(3000,2500)
+        self.dropout5 = nn.AlphaDropout(p=0.1)
+        self.fc5 = nn.Linear(2500,2000)
+        self.dropout6 = nn.AlphaDropout(p=0.1)
+        self.fc6 = nn.Linear(2000,1500)
+        self.fc7 = nn.Linear(1500,1000)
 
     def forward(self, x):
         x = self.dropout1(x)
-        x = F.relu(self.fc1(x))
+        x = F.selu(self.fc1(x))
         x = self.dropout2(x)
-        x = F.relu(self.fc2(x))
-        x = self.fc3(x)
+        x = F.selu(self.fc2(x))
+        x = self.dropout3(x)
+        x = F.selu(self.fc3(x))
+        x = self.dropout4(x)
+        x = F.selu(self.fc4(x))
+        x = self.dropout5(x)
+        x = F.selu(self.fc5(x))
+        x = self.dropout6(x)
+        x = F.selu(self.fc6(x))
+        x = self.fc7(x)
         return x 
+    
+#    def __init__(self):
+#        super(MLP, self).__init__()
+#        self.dropout1 = nn.Dropout()
+#        self.fc1 = nn.Linear(4096, 5000)
+#        self.dropout2 = nn.Dropout()
+#        self.fc2 = nn.Linear(5000, 2500)
+#        self.fc3 = nn.Linear(2500,1000)
+#
+#    def forward(self, x):
+#        x = self.dropout1(x)
+#        x = F.relu(self.fc1(x))
+#        x = self.dropout2(x)
+#        x = F.relu(self.fc2(x))
+#        x = self.fc3(x)
+#        return x 
     
     
 def save_checkpoint(state, is_best, filename='checkpoint_Adam.pth.tar'):
@@ -415,11 +443,11 @@ def torchweights_to_caffe(model):
 
 if __name__ == '__main__':
     # arguments
-    resume = "/home/choidami/ml/ppgn/checkpoint_Adam_1epoch_1e-4lr.pth.tar" #"/home/choidami/ml/ppgn/checkpoint_Adam.pth.tar"
-    data = "/home/choidami/ImageNet/"
+    resume = ""#"./checkpoints/checkpoint_Adam_1epoch_1e-4lr.pth.tar" #"/home/choidami/ml/ppgn/checkpoint_Adam.pth.tar"
+    data = "/home/damichoi/imagenet/"
     workers = 4
-    start_epoch = 1
-    epochs = 2
+    start_epoch = 0
+    epochs = 1
     evaluate = False
     print_freq = 10
     best_prec1 = 0
@@ -513,7 +541,7 @@ if __name__ == '__main__':
                 'state_dict': h_classifier.state_dict(),
                 'best_prec1': best_prec1,
                 'optimizer' : optimizer.state_dict(),
-            }, is_best, filename="checkpoint_Adam_2epoch_1e-4lr.pth.tar")
+            }, is_best, filename="./checkpoints/7layer_SELU_Adam_1epoch_1e-4lr.pth.tar")
     
     
 

@@ -1,0 +1,59 @@
+Code for the paper
+"Generating Images with Perceptual Similarity Metrics based on Deep Networks"
+version 0.5
+Alexey Dosovitskiy, 2016
+
+Commercial use not allowed.
+If you use this code in your research, please cite this paper:
+@InProceedings{DeePSiM_2016,
+  author       = "A. Dosovitskiy and T. Brox",
+  title        = "Generating Images with Perceptual Similarity Metrics based on Deep Networks",
+  booktitle    = "Advances in Neural Information Processing Systems (NIPS)",
+  year         = "2016",
+  url          = "http://lmb.informatik.uni-freiburg.de//Publications/2016/DB16c"
+}
+
+
+=== Reconstructing with pre-trained models === 
+
+You will need a working caffe installation with python interface to run this code. You will also need numpy and scipy. Tested on Ubuntu 14.04.
+
+Run:
+
+cd trained_models
+./download_models.sh
+python demo.py fc6
+
+This will produce a file reconstructions_fc6.png with reconstructions of multiple transformed versions of the cat image from CaffeNet fc6 features.
+Instead of ./download_models.sh you can manually download the models you need using the urls from download_models.sh .
+The script runs on cpu by default, but you can change it to gpu in the script.
+
+=== Training new models ===
+
+-- Custom caffe version --
+
+You will need to compile our modified caffe version to train your own models.
+This can be done by:
+
+git clone https://github.com/dosovits/caffe-fr-chairs.git
+cd caffe-fr-chairs
+git checkout deepsim
+# make a Makefile.config file, possibly based on the Makefile.config.example
+make all pycaffe -j8
+
+-- Training --
+
+When caffe is installed and visible to python, go to the training example:
+
+cd training/fc6
+
+Here you need to adjust data.prototxt to produce 256x256 mean-subtracted images. We trained on ILSVRC-2012 training set, resized to 256x256, in LMDB format.
+Then training can be initiated with:
+
+python train.py
+
+
+--
+
+Please repot bugs to dosovits@cs.uni-freiburg.de
+
